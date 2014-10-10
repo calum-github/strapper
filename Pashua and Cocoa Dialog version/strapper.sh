@@ -2,16 +2,18 @@
 
 ################################################################################################################################
 #####                                                                                                                          #
-##### Calum Hunter                                                                                                             #
+##### Author:       Calum Hunter                                                                                               #
 #####                                                                                                                          #
-##### Version 0.1   24-09-2014                                                                                                 #
-#####                                                                                                                          #
-##### Project:      DET NSW - NetBoot Environment Authorization via AD                                                         #
-#####                                                                                                                          #
+##### Version:      2.0                                                                                                        #
+##### Date:         10-10-2014                                                                                                 #
+##### Project:      NetBoot Environment Authorization via AD                                                                   #
 ##### Objective:    This script will run at boot on the Netboot Environment image.                                             # 
 #####               It will require a user to enter in their AD credentials which will be checked against AD via ldapsearch.   #
 #####               If the user provides correct login details and they are in the correct security groups they will be        #
-#####               forwarded on to the next stage ie. DeployStudio.                                                           #
+#####               forwarded on to the next stage ie. DeployStudio. 		                                                   #
+#####                                                                                                                          #
+##### Changes:		Version 2.0 now checks for building, level and room information and stores this on the machine             #
+#####				for later use to import into AD (Currently stored in the ARD Text Fields                                   #
 #####                                                                                                                          #
 ################################################################################################################################
 
@@ -27,10 +29,10 @@ runmode="Dev"
 #runmode="prod"
 
 # hard coded DET variables
-domain="detnsw.win"         # Our AD domain name
-sbase="dc=detnsw,dc=win"    # Our default search base when searching for user accounts etc
-sitebase="CN=Sites,CN=Configuration,DC=detnsw,DC=win"   # Our search base when looking for Site information only
-ADImagingGroup="DMIG_ET4L_SOE" # The name of the AD Group a user must be a member of in order to image a machine
+domain="your.domain"         # Our AD domain name
+sbase="dc=your,dc=domain"    # Our default search base when searching for user accounts etc
+sitebase="CN=Sites,CN=Configuration,DC=your,DC=domain"   # Our search base when looking for Site information only
+ADImagingGroup="Some_Group_You_Nominate" # The name of the AD Group a user must be a member of in order to image a machine
 
 # Network variables - Get the IP address and the subnet in Hex format
 ipaddr=`ifconfig en0 | awk '/inet[ ]/{print $2}'`
@@ -42,6 +44,11 @@ CDRes=`dirname $0` # Current path that this script is running from
 CD_APP="CocoaDialog.app" # Location of the App - use this location when bundling with Platypus
 CD="$CD_APP/Contents/MacOS/CocoaDialog" # Location of the binary
 
+# This is our XML Parser Function
+read_dom() {
+	local IFS=\>  ## Make IFS (Input Field Separator) local to this function, make the text split on > instead of spaces or tabs
+	read -d \< TAG RESULT # read content from stdin, split text via IFS and assign to variables Entity and Content
+}
 
 ## Setup the environment for a pashua run function
 pashua_run() {
@@ -73,7 +80,7 @@ pashua_run() {
 
 	if [ ! "$pashuapath" ]
 	then
-		echo "Error: Pashua could not be found"
+		echo "*** Error ***   Pashua could not be found"
 		exit 1
 	fi
 
@@ -103,7 +110,6 @@ pashua_run() {
 
 } # pashua_run()
 
-
 ## Create the initial login window configuration box.
 loginconf="
 # Set transparency: 0 is transparent, 1 is opaque
@@ -114,7 +120,7 @@ loginconf="
 
 # Introductory text
 tb.type = text
-tb.default = Welcome to the DET Mac OS X Deployment Tool.[return]To continue you must be a member of:[return][return]Imaging Group[return][return]Please enter your AD credentials below.[return]Note: You must use your AD Shortname and NOT your UPN.[return]Depending on your network connection this may take a moment.
+tb.default = Welcome to the YOURCOMPANY Mac OS X Deployment Tool.[return]To continue you must be a member of:[return][return]YOUR_IMAGING_GROUP[return][return]Please enter your AD credentials below.[return]Note: You must use your AD Shortname and NOT your UPN.[return]Depending on your network connection this may take a moment.
 tb.height = 176
 tb.width = 350
 tb.x = 20
@@ -146,7 +152,7 @@ shutdown.label = Shutdown
 "
 
 # Set the images' paths relative to this file's path / 
-icon=$(dirname "$0")'/images/det_logo.png'
+icon=$(dirname "$0")'/images/company_logo.png'
 
 # Display Pashua's icon
 loginconf="$loginconf
@@ -154,15 +160,7 @@ img.type = image
 img.x = 330
 img.y = 250
 img.path = $icon"
-
-
-pashua_run "$loginconf" 'utf8'
-
 #----------------------------------End of First pashuarun--------------------------#
-
-
-
-
 
 #----------------------------------Define our functions-----------------------------#
 
@@ -181,7 +179,7 @@ function bitCountForMask {
             8) count=count+1 ;;
             0) ;;
             *)
-                echo 1>&2 "error: illegal digit $digit in netmask"
+                echo 1>&2 "*** ERROR ***   Error in function bitCountForMask:-> error: illegal digit $digit in netmask"
                 return 1
                 ;;
         esac
@@ -218,10 +216,8 @@ netcalc(){
 
 choseshutdown()  ## Simple function to handle if the user selects the shutdown button
 {
-	echo "****************************"
-	echo "*  User chose to shutdown  *"
-	echo "*  Shuting down..........  *"
-	echo "****************************"
+	echo "*** WARN ***   User chose to shutdown"
+	echo "*** WARN ***   Shuting down.........."
 	if [ $runmode = "prod" ]
 		then
 			shutdown -h now
@@ -231,7 +227,7 @@ choseshutdown()  ## Simple function to handle if the user selects the shutdown b
 
 opendeploystudio()
 {
-	echo "Opening DeployStudio run time application from:- /Applications/Utilities/DeployStudio\ Admin.app/Contents/Applications/DeployStudio\ Runtime.app/Contents/MacOS/DeployStudio\ Runtime.bin"
+	echo "*** INFO ***   Opening DeployStudio run time application from:- /Applications/Utilities/DeployStudio\ Admin.app/Contents/Applications/DeployStudio\ Runtime.app/Contents/MacOS/DeployStudio\ Runtime.bin"
 	if [ $runmode = "prod" ]
 		then
 			/Applications/Utilities/DeployStudio\ Admin.app/Contents/Applications/DeployStudio\ Runtime.app/Contents/MacOS/DeployStudio\ Runtime.bin & # We run this in the background so we can close strapper. Multitasking Yo!
@@ -241,10 +237,8 @@ opendeploystudio()
 displaydeploystudio() ## Display the dialog box warning about failed group membership. User must shutdown
 {
 displayDS=($($CD msgbox --title "Success!" --icon-file $CDRes/images/go.png --text "Great Success!" --no-newline --informative-text "Passing you along to DeployStudio" --button1 "OK"))
-echo ""
-echo ""
-echo "User has passed all checks. Moving them on to DeployStudio"
-echo ""
+
+echo "*** INFO ***   User has passed all checks. Moving them on to DeployStudio"
 opendeploystudio
 }
 
@@ -255,26 +249,13 @@ checkusercreds() ## Function to test user credentials - exits 0 if successful, n
 if [ $? -ne "0" ]
 	then
 	authstatus="Failed"
-	echo "******************"
-	echo "*  Auth Failed!  *"
-	echo "******************"
-	echo ""
-	echo "Username entered:- $uname"
-	echo "Password entered:- $pword"
-	echo "-----------------------------------------"
-	echo ""
-	echo ""
+	echo "*** ERROR ***   Authentication FAILED!"
+	echo "*** ERROR ***   Failed Username Entered: $uname"
+	echo "*** ERROR ***   Failed Password Entered: $pword"
 else
 	authstatus="Success"
-	echo "*********************"
-	echo "*  Auth Successful  *"
-	echo "*********************"
-	echo ""
-	echo "Not logging correct user details"
-	echo "*--------------------------------*"
-	echo ""
-	echo ""
-	
+	echo "*** INFO ***   Authentication Sucessful"
+	echo "*** INFO ***   We are not logging correct user details"
 fi
 }
 
@@ -318,12 +299,8 @@ userbuttonselection=`cat $templogfile | sed -n 1p` # get the value of the button
 		then
 			choseshutdown
 	fi
-	echo ""
-	echo ""
-	echo "Site code entered in manually"
-	echo "User entered in site code $ADSiteCodeEntered"
-	echo ""
-	echo "" # echo out the user input for debug / logging
+	echo "*** INFO ***   Site code entered in manually"
+	echo "*** INFO ***   User entered in site code $ADSiteCodeEntered"
 	displaysitecodesearch  # if the user has entered in their site code and hit ok, then run this function to look up the AD site from their input
 }
 
@@ -334,18 +311,14 @@ sitefound=($($CD msgbox --title "AD Site Found" --icon-file $CDRes/images/go.png
 $ADSiteNameCIDR
 
 Is this correct?" --button1 "Yes" --button2 "No"))
-echo ""
-echo ""
-echo "Found AD Site from CIDR:- $ADSiteNameCIDR"
-echo ""
-echo ""
+echo "*** INFO ***   Found AD Site automatically. AD site is:- $ADSiteNameCIDR"
 	if [ $sitefound = "2" ]
 		then
-		echo "User has indiated this is incorrect"
-		echo "Will let them enter in their own code"
+		echo "*** WARN ***   User has indicated this is incorrect"
+		echo "*** WARN ***   Will let them enter in their own code"
 		displaysitefailed # if the user has decided the automatically found AD Site is incorrect then throw them across to the displaysite failed message box and let them enter in the site code
 	fi
-echo "User has indicated this is the correct site"
+echo "*** INFO ***   User has indicated this is the correct site"
 }
 
 displaysitecodesearch()
@@ -359,16 +332,12 @@ I have found the following site:
 $ADSiteNameCode
 
 Is this correct?" --button1 "Yes" --button2 "No"))
-
-echo ""
-echo "Result of manual site code look up is:- $ADSiteNameCode"
-echo ""
+echo "*** INFO ***   Found site name:- $ADSiteNameCode from site code entered manually"
 if [ $sitecodefound = "2" ]
 	then
 		displaysitefailed
 	fi
 }
-
 
 populateIPvariables()
 {
@@ -380,6 +349,7 @@ cidr="(cn=$cidrcalc/$netmaskcidr)" # this builds the AD Site CIDR to search for
 
 searchaditems()
 {
+
 # Lookup the user's account in AD and show them the friendly name ( AD Attribute:- name )
 ADName=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pword -b $sbase sAMAccountName=$uname | grep -w name | cut -c 7-`
 
@@ -390,19 +360,33 @@ ADGroups=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pw
 ADSiteNameCIDR=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pword -b $sitebase "$cidr" siteObject | grep siteObject | cut -f 1 -d "," | cut -c 16-`
 
 # Echo out these results for debug and logging purposes
-echo "Found the following information from AD:"
-echo ""
-echo "    Your AD name is:- $ADName"
-echo "    Your AD Groups are:- 
+echo "*** INFO ***   Found the following information from AD:"
+echo "*** INFO ***   Your AD name is:- $ADName"
+echo "*** INFO ***   Your AD Groups are:- 
 $ADGroups"
-echo "    Your AD Sitename is:- $ADSiteNameCIDR"
-echo ""
-echo ""
+if [ -z $ADSiteNameCIDR ]
+	then
+		echo "*** WARN ***   Unable to locate your AD Site name automatically"
+	else
+echo "*** INFO ***   Your AD Sitename is:- $ADSiteNameCIDR"
+fi
+}
+
+# this function searches AD for your site name which we found and then returns the 4 digit site code.
+findsitecode() 
+{
+ad_site_name="(cn=$ADSiteNameCIDR*)"
+ADSiteCodeLookedUp=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pword -b $sitebase "$ad_site_name" description | grep description | cut -c 14- | cut -f1 -d ","`
+echo "*** INFO ***   Found AD site code from the AD site name."
+echo "*** INFO ***   The AD site code is:- $ADSiteCodeLookedUp"
+
 }
 
 #------------------------------End of our functions------------------------------------#
 
+# Display our loginwindow
 
+pashua_run "$loginconf" 'utf8'
 
 ## Lets run some functions now to populate some variables
 populateIPvariables
@@ -428,9 +412,7 @@ searchaditems
 ## Now we need to test the results of our AD Search and see if we are a member of the imaging group
 if [[ $ADGroups == *$ADImagingGroup* ]] 
 	then
-		echo "**"
-		echo "Group check successful! You are authorised to deploy."
-		echo "**"
+		echo "*** INFO ***   Group check successful! You are authorised to deploy."
 else 
 displaygroupfailed
 fi
@@ -440,8 +422,352 @@ if [ -z $ADSiteNameCIDR ]
 then
 displaysitefailed
 else
+findsitecode # we found our site name	
 displaysitefound
 fi
+
+if [ -z $ADSiteCodeLookedUp ]
+	then
+		echo "*** WARN ***   Unable to find 4 digit site code automatically"
+		echo "*** WARN ***   Reverting to using 4 digit site code entered manually by user."
+		sitecode=$ADSiteCodeEntered
+	else
+		echo "*** INFO ***   Successfully looked up 4 digit site code from site name"
+		echo "*** INFO ***   Setting this to our site code for later"
+		sitecode=$ADSiteCodeLookedUp
+fi
+
+#-------------- Start the room selection ------------------------#
+
+# Header of our Get buildings envelope
+buildings1="$(cat <<'ENDOFVAR'
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://Yoursite.namespace.com">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <web:GetBuildingsBySiteCode>
+         <web:SiteCode>
+ENDOFVAR)"
+
+# Footer of our buildings envelope
+buildings2="$(cat <<'ENDOFVAR'
+</web:SiteCode>
+      </web:GetBuildingsBySiteCode>
+   </soapenv:Body>
+</soapenv:Envelope>
+ENDOFVAR)"
+
+# Build our buildings envelope and include our site code
+getbuildings_soap_envelope="$buildings1""$sitecode""$buildings2"
+
+# make a temporary file on disk to store our results
+buildingresults=`/usr/bin/mktemp /tmp/buildings_XXX` 	
+
+# Post our BUILDINGS envelope and write the output into our BUILDINGS results file
+curl -H "Content-type: text/xml; charset=utf-8" -H "SOAPAction:" -d "$getbuildings_soap_envelope" -X POST http://Yoursite.namespace.com > $buildingresults
+
+# This loops through our buildingresults and displays our output nicely
+while read_dom; do	
+	if [[ $TAG = "GetBuildingsBySiteCodeResult" ]]; then
+		echo "*** INFO ***   The following BUILDINGS are available..."
+		echo $RESULT
+		echo "*** INFO ***"
+		echo $RESULT > /tmp/Available_Buildings.txt
+	fi 
+done < $buildingresults
+
+availablebuildings="/tmp/Available_Buildings.txt"
+
+#-----------------------------------------BUILDINGS ----------------------------------------------#
+
+# This is what the buildings window should look like
+buildingsconf="
+# Set transparency: 0 is transparent, 1 is opaque
+*.transparency=0.95
+
+# Set window title
+*.title = Building
+
+txt.type = text
+txt.default = Please select the building this machine[return]is located in from the list below
+txt.x = 10
+txt.y = 120
+
+# Add a popup menu for Building
+buildinglist.type = popup
+buildinglist.label = Choose Your Building
+buildinglist.width = 200
+buildinglist.x = 10
+buildinglist.y = 40
+buildinglist.option = Select Building Code
+buildinglist.default = Select Building Code
+
+ok.type = defaultbutton
+ok.x = 550
+ok.y = 0
+
+"
+# Grab the list of available buildings that was received from the soap call using the site code
+rawbuildings=$(<$availablebuildings)
+
+# turn the raw buildings list into a nicely formatted list
+buildings=$(echo $rawbuildings | tr ";" "\n" )
+
+# this little loop puts our buildings list into a format that pashua can use where $x is the building name, then write this to disk for later
+for x in $buildings
+do 
+	echo "buildinglist.option = $x" >> /tmp/buildingspopup.txt
+	done
+
+#read in our nice popup list of buildings
+popupbuildings=$(</tmp/buildingspopup.txt)
+
+# add our popup list of buildings into pashua's buildings window config
+buildingsconf="$buildingsconf
+$popupbuildings
+"
+# throw up the buildings window and get the building name from the user
+pashua_run "$buildingsconf" 'utf8'
+#--------------------------------End of Buildings Window---------------------------------------#
+
+### Make a soap call here using the $sitecode and $buildinglist to get the levels that are available
+### pump out the levels to a text file
+
+buildingcode=$buildinglist
+
+# Header of our Levels envelope
+levels1="$(cat <<'ENDOFVAR'
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://Yoursite.namespace.com">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <web:GetLevelsByBuilding>
+         <web:SiteCode>
+ENDOFVAR)"
+
+
+# Footer of our Levels envelope
+levels2="$(cat <<'ENDOFVAR'
+</web:SiteCode>
+	<web:BuildingCode>
+ENDOFVAR)"
+
+levels3="$(cat <<'ENDOFVAR'
+</web:BuildingCode>
+		</web:GetLevelsByBuilding>
+	</soapenv:Body>
+</soapenv:Envelope>
+ENDOFVAR)"
+
+# Build our buildings envelope and include our site code
+getlevels_soap_envelope="$levels1""$sitecode""$levels2""$buildingcode""$levels3"
+
+# make a temporary file on disk to store our results
+levelsresults=`/usr/bin/mktemp /tmp/levels_XXX` 	
+
+# Post our LEVELS envelope and write the output into our Levels results file
+curl -H "Content-type: text/xml; charset=utf-8" -H "SOAPAction:" -d "$getlevels_soap_envelope" -X POST http://Yoursite.namespace.com > $levelsresults
+
+
+# This loops through our LEVELS Results and displays our output nicely
+while read_dom; do	
+	if [[ $TAG = "GetLevelsByBuildingResult" ]]; then
+		echo "*** INFO ***   The following LEVELS are available..."
+		echo $RESULT
+		echo "*** INFO ***"
+		echo $RESULT > /tmp/Available_Levels.txt
+	fi 
+done < $levelsresults
+
+availablelevels="/tmp/Available_Levels.txt"
+
+#----------------------------------------LEVELS------------------------------------------------#
+
+# This is what the buildings window should look like
+levelsconf="
+# Set transparency: 0 is transparent, 1 is opaque
+*.transparency=0.95
+
+# Set window title
+*.title = Building Levels
+
+txt.type = text
+txt.default = Please select the building level this machine[return]is located on from the list below
+txt.x = 10
+txt.y = 120
+
+# Add a popup menu for Level
+levellist.type = popup
+levellist.label = Choose Your Building Level
+levellist.width = 200
+levellist.x = 10
+levellist.y = 40
+levellist.option = Select Level Code
+levellist.default = Select Level Code
+
+ok.type = defaultbutton
+ok.x = 550
+ok.y = 0
+
+"
+
+# Grab the list of available levels that was received from the soap call using the site code
+rawlevels=$(<$availablelevels)
+
+# turn the raw levels list into a nicely formatted list
+levels=$(echo $rawlevels | tr ";" "\n" )
+
+# this little loop puts our levels list into a format that pashua can use where $x is the level name, then write this to disk for later
+for x in $levels
+do 
+	echo "levellist.option = $x" >> /tmp/levelspopup.txt
+	done
+
+# read in our nice popup list of levels
+popuplevels=$(</tmp/levelspopup.txt)
+
+# add our popup list of levels into pashua's levels window config
+levelsconf="$levelsconf
+$popuplevels
+"
+# throw up the levels window and get the level name from the user
+pashua_run "$levelsconf" 'utf8'
+
+#-------------------------------- End of Levels Window ---------------------------------------#
+
+### Make a soap call here using the $sitecode and $buildinglist and $levellist to get the levels that are available
+### pump out the levels to a text file
+
+levelcode=$levellist
+
+# Header of our ROOMS envelope
+rooms1="$(cat <<'ENDOFVAR'
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://Yoursite.namespace.com">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <web:GetRoomsByLevel>
+         <web:SiteCode>
+ENDOFVAR)"
+
+
+# Footer of our Levels envelope
+rooms2="$(cat <<'ENDOFVAR'
+</web:SiteCode>
+	<web:BuildingCode>
+ENDOFVAR)"
+
+rooms3="$(cat <<'ENDOFVAR'
+</web:BuildingCode>
+		<web:Level>
+ENDOFVAR)"
+
+rooms4="$(cat <<'ENDOFVAR'
+</web:Level>
+	</web:GetRoomsByLevel>
+	</soapenv:Body>
+</soapenv:Envelope>
+ENDOFVAR)"
+
+# Build our Rooms envelope and include our site code
+getrooms_soap_envelope="$rooms1""$sitecode""$rooms2""$buildingcode""$rooms3""$levelcode""$rooms4"
+
+# make a temporary file on disk to store our results
+roomsresults=`/usr/bin/mktemp /tmp/rooms_XXX` 	
+
+# Post our LEVELS envelope and write the output into our Levels results file
+curl -H "Content-type: text/xml; charset=utf-8" -H "SOAPAction:" -d "$getrooms_soap_envelope" -X POST http://Yoursite.namespace.com > $roomsresults
+
+# This loops through our buildingresults and displays our output nicely
+while read_dom; do	
+	if [[ $TAG = "GetRoomsByLevelResult" ]]; then
+		echo "*** INFO ***   The following ROOMS are available..."
+		echo $RESULT
+		echo "*** INFO ***"
+		echo $RESULT > /tmp/Available_Rooms.txt
+	fi 
+done < $roomsresults
+
+availablerooms="/tmp/Available_Rooms.txt"
+
+#---------------------------------------- ROOMS ------------------------------------------------#
+
+# This is what the buildings window should look like
+roomsconf="
+# Set transparency: 0 is transparent, 1 is opaque
+*.transparency=0.95
+
+# Set window title
+*.title = Building Rooms
+
+txt.type = text
+txt.default = Please select the room this machine[return]is located in from the list below
+txt.x = 10
+txt.y = 120
+
+# Add a popup menu for room
+roomlist.type = popup
+roomlist.label = Choose Your Room
+roomlist.width = 200
+roomlist.x = 10
+roomlist.y = 40
+roomlist.option = Select Room Code
+roomlist.default = Select Room Code
+
+ok.type = defaultbutton
+ok.x = 550
+ok.y = 0
+
+"
+
+# Grab the list of available rooms that was received from the soap call using the site code, building and level codes
+rawrooms=$(<$availablerooms)
+
+# turn the raw rooms list into a nicely formatted list
+rooms=$(echo $rawrooms | tr ";" "\n" )
+
+# this little loop puts our rooms list into a format that pashua can use where $x is the room name, then write this to disk for later
+for x in $rooms
+do 
+	echo "roomlist.option = $x" >> /tmp/roomspopup.txt
+	done
+
+# read in our nice popup list of rooms
+popuprooms=$(</tmp/roomspopup.txt)
+
+# add our popup list of rooms into pashua's rooms window config
+roomsconf="$roomsconf
+$popuprooms
+"
+# throw up the rooms window and get the room name from the user
+pashua_run "$roomsconf" 'utf8'
+
+#--------------------------- End of Rooms Conf -------------------------------------#
+
+# return the results
+echo "*** INFO ***   Summary of user selections:-"
+echo "*** INFO ***"
+echo "*** INFO ***   Building code:-    $buildinglist"
+echo "*** INFO ***   Level code:-       $levellist"
+echo "*** INFO ***   Room code:-        $roomlist"
+
+#----------------------------End of blah ------------------------------------------#
+
+# This is what the buildings window should look like
+summaryconf="
+# Set transparency: 0 is transparent, 1 is opaque
+*.transparency=0.95
+
+# Set window title
+*.title = Review
+
+txt.type = text
+txt.default = You have chosen the following options:[return]Site:-      $sitecode[return]Building:-      $buildinglist [return]Level:-      $levellist [return]Room:-      $roomlist
+txt.x = 10
+txt.y = 50
+
+ok.type = defaultbutton
+ok.x = 200
+ok.y = 0
+"
+pashua_run "$summaryconf" 'utf8'
 
 displaydeploystudio
 

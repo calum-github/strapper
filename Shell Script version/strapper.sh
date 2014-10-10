@@ -3,6 +3,8 @@
 ################################################################################################################################
 ##### Calum Hunter                                                                                                             #
 ##### 23-09-2014                                                                                                               #
+#####                                                                                                                          # 
+##### Version 0.3                                                                                                              #
 #####                                                                                                                          #
 ##### Project:      DET NSW - NetBoot Environment Authorization via AD                                                         #
 #####                                                                                                                          #
@@ -151,6 +153,7 @@ ADGroups=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pw
 # Try to find the AD Site name from our network address eg. (cn=10.142.128.0/21)
 ADSiteNameCIDR=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pword -b $sitebase "$cidr" siteObject | grep siteObject | cut -f 1 -d "," | cut -c 16-`
 
+
 tput setaf 4
 echo ""
 echo ""
@@ -215,12 +218,17 @@ echo "*                                                                         
 echo "******************************************************************************"
 tput sgr0
 else
+# Try to find the AD Site CODE from our SiteName
+ad_site_name="(cn=$ADSiteNameCIDR*)"
+ADSiteCodeLookedUp=`/usr/bin/ldapsearch -LLL -H ldap://$domain -x -D $uname@$domain -w $pword -b $sitebase "$ad_site_name" description | grep description | cut -c 14- | cut -f1 -d ","`
+
 tput setaf 4
 echo "******************************************************************************"
 echo "*                                                                            *"
 echo "*       Your AD Site name from AD CIDR network $cidr is $ADSiteNameCIDR      *"
 echo "*                                                                            *"
 echo "******************************************************************************"
+echo " I also found your site code from your Site Name to be $ADSiteCodeLookedUp"
 tput sgr0
 fi
 tput setaf 4
