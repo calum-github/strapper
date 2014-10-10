@@ -15,12 +15,12 @@
 ################################################################################################################################
 
 # hard coded DET variables
-domain="detnsw.win"         # Our AD domain name
-sbase="dc=detnsw,dc=win"    # Our default search base when searching for user accounts etc
-sitebase="CN=Sites,CN=Configuration,DC=detnsw,DC=win"   # Our search base when looking for Site information only
+domain="your.domain"         # Our AD domain name
+sbase="dc=your,dc=domain"    # Our default search base when searching for user accounts etc
+sitebase="CN=Sites,CN=Configuration,DC=your,DC=domain"   # Our search base when looking for Site information only
 
 # The name of the AD Group a user must be a member of in order to image a machine
-ADImagingGroup="DMIG_ET4L_SOE"
+ADImagingGroup="Some_group"
 
 # Network variables - Get the IP address and the subnet in Hex format
 ipaddr=`ifconfig en0 | awk '/inet[ ]/{print $2}'`
@@ -28,11 +28,11 @@ netmaskhex=`ifconfig en0 | grep netmask | cut -d' ' -f4`
 
 tput bold
 tput setaf 4
-echo "**************************************************"
-echo "*                                                *"
-echo "*   Welcome to the DET Mac OS X Deployment Tool  *"
-echo "*                                                *"
-echo "**************************************************"
+echo "*****************************************************"
+echo "*                                                   *"
+echo "*   Welcome to the Company Mac OS X Deployment Tool *"
+echo "*                                                   *"
+echo "*****************************************************"
 tput sgr0
 echo ""
 echo ""
@@ -67,7 +67,7 @@ echo "************************   WARNING   **************************"
 echo "*                                                             *"
 echo "* Invalid username or password combination! Please try again. *"  
 echo "* Ensure that you use your sAMAccount name only.              *"
-echo "* Do not appened the @detnsw.win suffix                       *"
+echo "* Do not appened the @companyname suffix                      *"
 echo "*                                                             *"
 echo "***************************************************************"
 tput sgr0
@@ -140,8 +140,6 @@ netmaskcidr=`bitCountForMask $netmaskhex` # this gives us our CIDR format of our
 ##  Now build the AD Site network subnet variable
 ##  We try to match this to a Site in AD
 cidr="(cn=$cidrcalc/$netmaskcidr)"
-#cidr="(cn=10.142.128.0/21)" ### this is for testing purposes - remove when no longer needed
-
 
 ## Lets do some AD lookups
 # Lookup the user's account in AD and show them the friendly name ( AD Attribute:- name )
